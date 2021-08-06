@@ -466,6 +466,7 @@ class Executor:
         for filename in self.excelManager.filenames:
             self.excelManager.read(filename)
 
+            # TODO 要按行或列遍历；按配置遍历若有列要filt，会对不齐
             for _property in self.property.rows:
                 # pattern：(reg, reg_string) 或 (str, []) 或 (dec, round)
                 src, src_beg, src_end, dst, dst_beg, pattern, template = [p.get() for p in _property]
