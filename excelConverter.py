@@ -11,11 +11,10 @@ from tkinter import *
 from tkinter.filedialog import askdirectory, askopenfilename
 from tkinter.messagebox import showerror
 
-# font = xlwt.Font()
-# style = xlwt.XFStyle()
-# font.name = u"宋体"
-# style.font = font
 property_file = "property.csv"
+
+
+# TODO 没有配置文件时的初始化
 
 
 def handlerAdaptor(fun, **kwds):
@@ -90,8 +89,8 @@ class UI:
             scrollbar = Scrollbar(outer_frame, orient="vertical")
             canvas = Canvas(outer_frame,
                             yscrollcommand=scrollbar.set,
-                            width=400,
-                            height=280,
+                            width=int(0.85 * self.main_width),
+                            height=int(0.75 * self.root_height),
                             highlightthickness=0)
             canvas.grid(row=0, column=0)
             scrollbar.config(command=canvas.yview)
@@ -108,6 +107,7 @@ class UI:
 
         def selectDir():
             self.executor.selectDirAndExecute()
+
             clearFrame(outer_frame)
             scrollable_frame_before()
             i = 0
@@ -119,13 +119,17 @@ class UI:
             scrollable_frame_after()
 
         def selectFile():
-            # TODO
             self.executor.selectFileAndExecute()
-            text = ""
-            for filename in self.executor.excelManager.filenames:
-                text += (filename + '\n')
 
-            file_info.config(text=text)
+            clearFrame(outer_frame)
+            scrollable_frame_before()
+            i = 0
+            for filename in self.executor.excelManager.filenames:
+                label = Label(inner_frame, text=filename)
+                label.grid(row=i, column=0)
+                i += 1
+            bind_scroll()
+            scrollable_frame_after()
 
         Button(self.main_frame,
                text="选择文件夹",
@@ -184,7 +188,7 @@ class UI:
 
         def focusOut(event, label, entry, row, column):
             try:
-                self.executor.isValidProperty(row)
+                self.executor.isValidProperty(self.executor.property.rows[row])
             except NullError:
                 showerror("错误", "配置不合法：检查是否有空")
                 return
@@ -213,7 +217,7 @@ class UI:
             entry = Entry(inner_frame,
                           textvariable=self.executor.property.rows[row][column],
                           font=("宋体", "12"),
-                          width=8)
+                          width=self.executor.property.width[column])
             entry.bind("<MouseWheel>", scroll)
             entry.focus_set()
             entry.grid(row=row + 2, column=column, sticky=W + E)
@@ -223,6 +227,18 @@ class UI:
                 widget.bind("<Button-1>", handlerAdaptor(focusOut, label=label, entry=entry, row=row, column=column))
 
         def confirmAdd(row, column, buffer, entry_list, button_add, button_confirm, button_cancel):
+            try:
+                self.executor.isValidProperty(buffer)
+            except NullError:
+                showerror("错误", "配置不合法：检查是否有空")
+                return
+            except ValueError:
+                showerror("错误", "配置不合法：检查是否都为正整数")
+                return
+            except RangeError:
+                showerror("错误", "配置不合法：检查 起始 <= 结束")
+                return
+
             for entry in entry_list:
                 entry.destroy()
 
@@ -236,7 +252,7 @@ class UI:
                 label = Label(inner_frame,
                               text=data.get(),
                               font=("宋体", "12"),
-                              width=8,
+                              width=self.executor.property.width[i],
                               height=2)
                 label.bind("<Double-Button-1>", handlerAdaptor(editProperty, label=label))
                 label.bind("<MouseWheel>", scroll)
@@ -275,7 +291,7 @@ class UI:
                 entry = Entry(inner_frame,
                               textvariable=buffer[i],
                               font=("宋体", "12"),
-                              width=8)
+                              width=self.executor.property.width[i])
                 entry.bind("<MouseWheel>", scroll)
                 entry.grid(row=r, column=c, sticky=W + E)
                 entry_list.append(entry)
@@ -337,7 +353,7 @@ class UI:
                 label = Label(inner_frame,
                               text=attr,
                               font=("宋体", "12"),
-                              width=8,
+                              width=self.executor.property.width[j],
                               height=2)
                 label.grid(row=i, column=j, sticky=W + E)
                 j += 1
@@ -351,7 +367,7 @@ class UI:
                     label = Label(inner_frame,
                                   text=data.get(),
                                   font=("宋体", "12"),
-                                  width=8,
+                                  width=self.executor.property.width[j],
                                   height=2)
                     label.bind("<Double-Button-1>", handlerAdaptor(editProperty, label=label))
                     property_label_list.append(label)
@@ -449,8 +465,95 @@ class Executor:
     def execute(self):
         for filename in self.excelManager.filenames:
             self.excelManager.read(filename)
-            # TODO
+
+            for _property in self.property.rows:
+                # pattern：(reg, reg_string) 或 (str, []) 或 (dec, round)
+                src, src_beg, src_end, dst, dst_beg, pattern, template = [p.get() for p in _property]
+                src = int(src) - 1
+                src_beg = int(src_beg) - 1
+                src_end = int(src_end) - 1
+                dst = int(dst) - 1
+                dst_beg = int(dst_beg) - 1
+                for offset in range(0, src_end - src_beg + 1):
+                    src_row = 0
+                    src_column = 0
+                    dst_row = 0
+                    dst_column = 0
+                    # 列
+                    if self.property.mode.get() == 0:
+                        src_row = src_beg + offset
+                        src_column = src
+                        dst_row = dst_beg + offset
+                        dst_column = dst
+                    # 行
+                    elif self.property.mode.get() == 1:
+                        src_row = src
+                        src_column = src_beg + offset
+                        dst_row = dst
+                        dst_column = dst_beg + offset
+
+                    value = self.excelManager.src_sheet.cell_value(src_row, src_column)
+                    parse_res = self.parser(pattern, value)
+                    filt_res = True
+                    for res in parse_res:
+                        if isinstance(res, bool):
+                            filt_res = filt_res and res
+                    # 不满足筛选条件
+                    if not filt_res:
+                        continue
+                    if template == "":
+                        value = parse_res[0]
+                    else:
+                        place_holders = re.findall(r"{\s*\d+\s*}", template)
+                        place_holders.sort(key=lambda idx: int(re.findall(r"\d+", idx)[0]))
+                        for i in range(0, min(len(parse_res), len(place_holders))):
+                            template = template.replace(place_holders[i], parse_res[i])
+                        value = template
+
+                    while dst_row >= len(self.excelManager.dst_sheet):
+                        self.excelManager.dst_sheet.append(list())
+                    while dst_column >= len(self.excelManager.dst_sheet[dst_row]):
+                        self.excelManager.dst_sheet[dst_row].append([None, None])
+                    self.excelManager.dst_sheet[dst_row][dst_column] = [value, None]
             self.excelManager.write(filename)
+
+    def parser(self, string, value):
+        # TODO 目前只测试了 str 和 dec 以及 str -> dec
+        cmd_lst = string.split(";")
+        cmd_lst = [s.strip() for s in cmd_lst]
+        res = []
+        for cmd_line in cmd_lst:
+            cmds = cmd_line.split("->")
+            cmds = [s.strip() for s in cmds]
+            s = value
+            for cmd in cmds:
+                operator = re.findall(r"\(\s*(.*?)\s*,", cmd)[0]
+                param = re.findall(r",\s*(.*?)\s*\)", cmd)[0]
+                if operator == "flt":
+                    words = re.findall(r"[^&|!()\s]+", param)
+                    for word in words:
+                        if word == s:
+                            rpl = "1"
+                        else:
+                            rpl = "0"
+                        param = param.replace(word, rpl, 1)
+                    param = param.replace("!", " not ").replace("&", " and ").replace("|", " or ")
+                    boolean = bool(eval(param))
+                    res.append(boolean)
+                elif operator == "reg":
+                    s = re.search(param, s)
+                elif operator == "str":
+                    beg = int(re.findall(r"\[\s*(-?\d*?)\s*:", param)[0])
+                    end = int(re.findall(r":\s*(-?\d*?)\s*\]", param)[0])
+                    s = s[beg: end]
+                elif operator == "dec":
+                    d = Decimal(str(s))
+                    r = int(param)
+                    # d 现在是精确的浮点数，用round应该没问题
+                    d = round(d, r)
+                    s = str(d)
+            res.append(s)
+        return res
 
     def selectDirAndExecute(self):
         self.excelManager.selectDir()
@@ -470,13 +573,18 @@ class Executor:
 
         self.execute()
 
-    def isValidProperty(self, row):
-        this_row = self.property.rows[row]
+    def isValidProperty(self, this_row):
+        # TODO 不允许src, dst都相同
+        i = 0
         for data in this_row:
+            if i == 5 or i == 6:
+                i += 1
+                continue
             if data.get() == "":
                 raise NullError()
             if not data.get().isdigit():
                 raise ValueError
+            i += 1
         if this_row[1].get() > this_row[2].get():
             raise RangeError()
 
@@ -499,13 +607,14 @@ class Executor:
 
 
 class Property:
-    """[src row/column, src begin, src end, dest row/column, dest begin]"""
+    """[src row/column, src begin, src end, dst row/column, dst begin]"""
 
     def __init__(self):
         self.csvManager = CSVManager()
         self.csvManager.read(property_file)
         self.mode = IntVar()
         self.headers = []
+        self.width = [8, 8, 8, 8, 8, 12, 12]
         self.rows = []
         self.mode.set(self.csvManager.headers[-1])
 
@@ -578,19 +687,42 @@ class FileManager:
 class ExcelManager(FileManager):
     def __init__(self):
         super().__init__()
-        """[[(row, column, label, style), ...], ...]"""
-        self.sheet = []
+        self.src_sheet = []
+        """[[[label, style], ...], ...]"""
+        self.dst_sheet = []
+        self.xf_list = []
+        self.font_list = []
+
+    def getDefaultStyle(self, row, column):
+        return self.xf_list[self.src_sheet.cell_xf_index(row, column)]
+
+    def getDefaultFont(self, row, column):
+        return self.font_list[self.src_sheet.cell_xf_index(row, column)]
 
     def read(self, filename):
-        data = xlrd.open_workbook(filename)
-        table = data.sheets()[0]
+        work_book = xlrd.open_workbook(filename, formatting_info=True)
+        self.src_sheet = work_book.sheets()[0]
+        self.xf_list = work_book.xf_list
+        self.font_list = work_book.font_list
 
     def write(self, filename):
         workbook = xlwt.Workbook(encoding="utf-8")
         worksheet = workbook.add_sheet("sheet")
-        for row in self.sheet:
-            for params in row:
-                row, column, label, style = params
+
+        _font = xlwt.Font()
+        _style = xlwt.XFStyle()
+        _font.name = u'宋体'
+        _style.font = _font
+
+        for row in range(0, len(self.dst_sheet)):
+            for column in range(0, len(self.dst_sheet[row])):
+                label, style = self.dst_sheet[row][column]
+                if style is None:
+                    # font = xlwt.Font()
+                    # style = xlwt.XFStyle()
+                    # font.name = self.getDefaultFont(row, column).name
+                    # style.font = font
+                    style = _style
                 worksheet.write(row, column, label, style)
 
         workbook.save(filename + "的结果.xls")
@@ -626,9 +758,9 @@ class CSVManager(FileManager):
 def main():
     root = Tk()
     root.title("Excel转换工具0.0.1")
-    root.geometry("650x400")
+    root.geometry("880x500")
     root.resizable(width=False, height=False)
-    ui = UI(root, 650, 400)
+    ui = UI(root, 880, 500)
     ui.GUIManager()
     root.mainloop()
 
