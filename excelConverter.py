@@ -98,7 +98,7 @@ class UI:
 
             inner_frame = Frame(canvas)
             canvas.create_window((0, 0), window=inner_frame, anchor='nw')
-            outer_frame.grid(row=1, column=0, columnspan=6, padx=padding_left)
+            outer_frame.grid(row=1, column=0, columnspan=8, padx=padding_left)
 
         def scrollable_frame_after():
             nonlocal outer_frame, canvas
@@ -466,7 +466,9 @@ class Executor:
         for filename in self.excelManager.filenames:
             self.excelManager.read(filename)
 
-            # TODO 要按行或列遍历；按配置遍历若有列要filt，会对不齐
+            # 有多个filt时，标记不符合条件的行或列，最后统一移除
+            abandon = []
+
             for _property in self.property.rows:
                 # pattern：(reg, reg_string) 或 (str, []) 或 (dec, round)
                 src, src_beg, src_end, dst, dst_beg, pattern, template = [p.get() for p in _property]
@@ -501,6 +503,7 @@ class Executor:
                             filt_res = filt_res and res
                     # 不满足筛选条件
                     if not filt_res:
+                        abandon.append(src_row)
                         continue
                     if template == "":
                         value = parse_res[0]
@@ -516,6 +519,14 @@ class Executor:
                     while dst_column >= len(self.excelManager.dst_sheet[dst_row]):
                         self.excelManager.dst_sheet[dst_row].append([None, None])
                     self.excelManager.dst_sheet[dst_row][dst_column] = [value, None]
+
+            res_buffer = []
+            if len(abandon) != 0:
+                for i in range(0, len(self.excelManager.dst_sheet)):
+                    if i not in abandon:
+                        res_buffer.append(self.excelManager.dst_sheet[i])
+                self.excelManager.dst_sheet = res_buffer
+
             self.excelManager.write(filename)
 
     def parser(self, string, value):
