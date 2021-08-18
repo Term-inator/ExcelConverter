@@ -1,6 +1,5 @@
 # -*- coding:utf-8 -*-
 import os
-
 import xlrd
 import xlwt
 import csv
@@ -13,8 +12,28 @@ from tkinter.messagebox import showerror
 
 property_file = "property.csv"
 
+# TODO 不填前三项和pattern => 新增一行/一列
+# TODO 不填end默认到文件的最后
+# TODO 列号沿用Excel的格式
+# TODO 报错处理
 
-# TODO 没有配置文件时的初始化
+
+def isChinese(c):
+    if '\u4e00' <= c <= '\u9fff':
+        return True
+    return False
+
+
+def getWidth(s):
+    # 对于label和entry 一个字母或数字宽度为1 一个汉字宽度为2
+    width = 0
+    for c in s:
+        if isChinese(c):
+            width += 2
+        else:
+            width += 1
+
+    return width
 
 
 def handlerAdaptor(fun, **kwds):
@@ -38,13 +57,16 @@ class UI:
         self.root = root
         self.root_width = width
         self.root_height = height
-        self.nav_width = int(0.2 * self.root_width)
-        self.main_width = self.root_width - self.nav_width
+        self.nav_width = int(0.14 * self.root_width)
+        padding = 40
+        self.main_width = self.root_width - self.nav_width - 2 * padding
 
         self.nav_bar = Frame(self.root,
                              width=self.nav_width,
                              height=self.root_height)
         self.nav_bar.pack(side="left", fill="y")
+        self.nav_bar.grid_propagate(0)
+        self.nav_bar.pack_propagate(0)
 
         border_right = Label(self.root,
                              borderwidth=0.1,
@@ -52,12 +74,22 @@ class UI:
                              bg="black")
         border_right.pack(side="left", fill="y")
 
+        padding_left = Frame(self.root,
+                             width=padding,
+                             height=self.root_height)
+        padding_left.pack(side="left", fill="y")
+
         self.main_frame = Frame(self.root,
                                 width=self.main_width,
                                 height=self.root_height)
         self.main_frame.pack(side="left", fill="y")
         self.main_frame.grid_propagate(0)
         self.main_frame.pack_propagate(0)
+
+        padding_right = Frame(self.root,
+                              width=padding,
+                              height=self.root_height)
+        padding_right.pack(side="left", fill="y")
 
         self.pages = {'0': "主页", '1': "设置"}
         self.page = '0'
@@ -69,7 +101,6 @@ class UI:
         self.mainPage()
 
     def mainPage(self):
-        padding_left = 40
         outer_frame = 0
         canvas = 0
         inner_frame = 0
@@ -98,7 +129,7 @@ class UI:
 
             inner_frame = Frame(canvas)
             canvas.create_window((0, 0), window=inner_frame, anchor='nw')
-            outer_frame.grid(row=1, column=0, columnspan=8, padx=padding_left)
+            outer_frame.grid(row=1, column=0, columnspan=8)
 
         def scrollable_frame_after():
             nonlocal outer_frame, canvas
@@ -112,7 +143,7 @@ class UI:
             scrollable_frame_before()
             i = 0
             for filename in self.executor.excelManager.filenames:
-                label = Label(inner_frame, text=filename)
+                label = Label(inner_frame, text=filename, font=("宋体", 12))
                 label.grid(row=i, column=0)
                 i += 1
             bind_scroll()
@@ -125,7 +156,7 @@ class UI:
             scrollable_frame_before()
             i = 0
             for filename in self.executor.excelManager.filenames:
-                label = Label(inner_frame, text=filename)
+                label = Label(inner_frame, text=filename, font=("宋体", 12))
                 label.grid(row=i, column=0)
                 i += 1
             bind_scroll()
@@ -135,7 +166,7 @@ class UI:
                text="选择文件夹",
                font=("宋体", 12),
                width=10,
-               command=selectDir).grid(row=0, column=0, columnspan=3, padx=padding_left, pady=25, sticky=W)
+               command=selectDir).grid(row=0, column=0, columnspan=3, pady=25, sticky=W)
         Button(self.main_frame,
                text="选择文件",
                font=("宋体", 12),
@@ -147,7 +178,6 @@ class UI:
         scrollable_frame_after()
 
     def settings(self):
-        padding_left = 40
         outer_frame = 0
         canvas = 0
         inner_frame = 0
@@ -165,21 +195,26 @@ class UI:
         def scrollable_frame_before():
             nonlocal outer_frame, canvas, inner_frame
             outer_frame = Frame(self.main_frame,
-                                highlightthickness=0,
-                                bg="red")
-            scrollbar = Scrollbar(outer_frame, orient="vertical")
+                                width=self.main_width,
+                                height=self.root_height,
+                                highlightthickness=0)
+            scrollbar_v = Scrollbar(outer_frame, orient="vertical")
+            scrollbar_h = Scrollbar(outer_frame, orient="horizontal")
             canvas = Canvas(outer_frame,
-                            yscrollcommand=scrollbar.set,
+                            yscrollcommand=scrollbar_v.set,
+                            xscrollcommand=scrollbar_h.set,
                             width=self.main_width,
-                            height=self.root_height,
+                            height=self.root_height - 18,
                             highlightthickness=0)
             canvas.grid(row=0, column=0, sticky="ns")
-            scrollbar.config(command=canvas.yview)
-            scrollbar.grid(row=0, column=1, sticky="ns")
+            scrollbar_v.config(command=canvas.yview)
+            scrollbar_v.grid(row=0, column=1, sticky="ns")
+            scrollbar_h.config(command=canvas.xview)
+            scrollbar_h.grid(row=1, column=0, sticky="ew")
 
             inner_frame = Frame(canvas)
             canvas.create_window((0, 0), window=inner_frame, anchor='nw')
-            outer_frame.grid(row=1, column=0, columnspan=6, padx=padding_left)
+            outer_frame.grid(row=0, column=0, columnspan=6)
 
         def scrollable_frame_after():
             nonlocal outer_frame, canvas
@@ -200,6 +235,8 @@ class UI:
                 return
 
             entry.destroy()
+            self.executor.property.width[column] = max(self.executor.property.default_width[column], getWidth(self.executor.property.rows[row][column].get()))
+            label.config(width=self.executor.property.width[column])
             label.config(text=self.executor.property.rows[row][column].get())
             label.grid(row=row + 2, column=column, sticky=W + E)
 
@@ -208,12 +245,15 @@ class UI:
             # 立即更新配置
             self.executor.updateRow()
 
+            scrollable_frame_after()
+
         def editProperty(event, label):
             index = property_label_list.index(label)
             row = int(index / self.executor.property.attr_num)
             column = index % self.executor.property.attr_num
 
             label.grid_forget()
+            print(self.executor.property.width)
             entry = Entry(inner_frame,
                           textvariable=self.executor.property.rows[row][column],
                           font=("宋体", "12"),
@@ -270,6 +310,7 @@ class UI:
 
             button_add.config(command=lambda: addRow(row + 1, 0, button_add))
             button_add.grid(row=row + 1, column=column, pady=16, sticky=W + E)
+
             scrollable_frame_after()
 
         def cancelAdd(row, column, entry_list, button_add, button_confirm, button_cancel):
@@ -280,6 +321,8 @@ class UI:
             button_cancel.grid_forget()
 
             button_add.grid(row=row + 1, column=column, pady=16, sticky=W + E)
+
+            scrollable_frame_after()
 
         def addRow(row, column, button_add):
             button_add.grid_forget()
@@ -314,6 +357,8 @@ class UI:
                                                              button_cancel))
             button_cancel.grid(row=r, column=c, sticky=W + E)
 
+            scrollable_frame_after()
+
         def deleteRow(row, button_delete):
             button_delete_list.remove(button_delete)
             button_delete.destroy()
@@ -327,6 +372,8 @@ class UI:
 
             displayPropertyLabels()
             displayButtonDelete()
+
+            scrollable_frame_after()
 
         def displayButtonDelete():
             i = 0
@@ -457,6 +504,16 @@ class NullError(Exception):
     pass
 
 
+def precision(num):
+    if num < 0:
+        raise ValueError
+    res = "0."
+    for i in range(0, num):
+        res += '0'
+
+    return Decimal(res)
+
+
 class Executor:
     def __init__(self):
         self.excelManager = ExcelManager()
@@ -466,7 +523,7 @@ class Executor:
         for filename in self.excelManager.filenames:
             self.excelManager.read(filename)
 
-            # 有多个filt时，标记不符合条件的行或列，最后统一移除
+            # 有多个flt时，标记不符合条件的行或列，最后统一移除
             abandon = []
 
             for _property in self.property.rows:
@@ -495,24 +552,33 @@ class Executor:
                         dst_row = dst
                         dst_column = dst_beg + offset
 
-                    value = self.excelManager.src_sheet.cell_value(src_row, src_column)
-                    parse_res = self.parser(pattern, value)
+                    value = str(self.excelManager.src_sheet.cell_value(src_row, src_column))
+                    print(value)
+
+                    if pattern != "":
+                        value, parse_res = self.parser(pattern, value)
+                    else:
+                        parse_res = []
+
                     filt_res = True
                     for res in parse_res:
                         if isinstance(res, bool):
                             filt_res = filt_res and res
+
                     # 不满足筛选条件
                     if not filt_res:
                         abandon.append(src_row)
                         continue
-                    if template == "":
-                        value = parse_res[0]
-                    else:
+
+                    if template != "":
                         place_holders = re.findall(r"{\s*\d+\s*}", template)
                         place_holders.sort(key=lambda idx: int(re.findall(r"\d+", idx)[0]))
+                        _template = template
                         for i in range(0, min(len(parse_res), len(place_holders))):
-                            template = template.replace(place_holders[i], parse_res[i])
-                        value = template
+                            _template = template.replace(place_holders[i], str(parse_res[i]))
+                        value = _template
+
+                    print(value)
 
                     while dst_row >= len(self.excelManager.dst_sheet):
                         self.excelManager.dst_sheet.append(list())
@@ -530,7 +596,6 @@ class Executor:
             self.excelManager.write(filename)
 
     def parser(self, string, value):
-        # TODO 目前只测试了 str 和 dec 以及 str -> dec
         cmd_lst = string.split(";")
         cmd_lst = [s.strip() for s in cmd_lst]
         res = []
@@ -553,19 +618,23 @@ class Executor:
                     boolean = bool(eval(param))
                     res.append(boolean)
                 elif operator == "reg":
-                    s = re.search(param, s)
+                    obj = re.search(param, s)
+                    if obj is None:
+                        s = ""
+                    else:
+                        span = obj.span()
+                        s = s[span[0]:span[1]]
                 elif operator == "str":
                     beg = int(re.findall(r"\[\s*(-?\d*?)\s*:", param)[0])
                     end = int(re.findall(r":\s*(-?\d*?)\s*\]", param)[0])
                     s = s[beg: end]
                 elif operator == "dec":
-                    d = Decimal(str(s))
+                    print(s)
+                    d = Decimal(s)
                     r = int(param)
-                    # d 现在是精确的浮点数，用round应该没问题
-                    d = round(d, r)
-                    s = str(d)
+                    s = str(d.quantize(precision(r)))
             res.append(s)
-        return res
+        return [s, res]
 
     def selectDirAndExecute(self):
         self.excelManager.selectDir()
@@ -623,10 +692,18 @@ class Property:
 
     def __init__(self):
         self.csvManager = CSVManager()
-        self.csvManager.read(property_file)
+
+        try:
+            self.csvManager.read(property_file)
+        except FileNotFoundError:
+            fp = open(property_file, 'w')
+            fp.close()
+            self.csvManager.headers = ["源文件", "起始", "终止", "目标文件", "起始", "pattern", "template", "0"]
+
         self.mode = IntVar()
         self.headers = []
-        self.width = [8, 8, 8, 8, 8, 12, 12]
+        self.default_width = [8, 8, 8, 8, 8, 16, 16]
+        self.width = [8, 8, 8, 8, 8, 16, 16]
         self.rows = []
         self.mode.set(self.csvManager.headers[-1])
 
@@ -648,6 +725,8 @@ class Property:
                 data = StringVar()
                 data.set(column)
                 row_data.append(data)
+                # 计算数据的长度
+                self.width[j] = max(self.width[j], max(self.default_width[j], getWidth(column)))
                 j += 1
             self.rows.append(row_data)
 
@@ -770,9 +849,9 @@ class CSVManager(FileManager):
 def main():
     root = Tk()
     root.title("Excel转换工具0.0.1")
-    root.geometry("880x500")
-    root.resizable(width=False, height=False)
-    ui = UI(root, 880, 500)
+    root.geometry("980x500")
+    # root.resizable(width=False, height=False)
+    ui = UI(root, 980, 500)
     ui.GUIManager()
     root.mainloop()
 
