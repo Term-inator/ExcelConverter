@@ -16,6 +16,7 @@ property_file = "property.csv"
 
 
 # TODO 列号沿用Excel的格式
+# TODO 支持逆向访问
 # TODO 报错处理
 
 
@@ -522,10 +523,11 @@ class Executor:
             new = 0b00011
 
         def getType(lst):
+            print(lst)
             res = 0b0
             for item in lst:
                 res <<= 1
-                if item != "":
+                if item.get() != "":
                     res += 1
 
             return res
@@ -711,8 +713,6 @@ class Executor:
                 continue
             if data.get() == "":
                 continue
-            if not data.get().isdigit():
-                raise ValueError
             i += 1
         if this_row[1].get() > this_row[2].get():
             raise RangeError()
