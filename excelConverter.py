@@ -1,5 +1,7 @@
 # -*- coding:utf-8 -*-
 import os
+from enum import Enum, unique
+
 import xlrd
 import xlwt
 import csv
@@ -12,8 +14,7 @@ from tkinter.messagebox import showerror
 
 property_file = "property.csv"
 
-# TODO 不填前三项和pattern => 新增一行/一列
-# TODO 不填end默认到文件的最后
+
 # TODO 列号沿用Excel的格式
 # TODO 报错处理
 
@@ -224,9 +225,6 @@ class UI:
         def focusOut(event, label, entry, row, column):
             try:
                 self.executor.isValidProperty(self.executor.property.rows[row])
-            except NullError:
-                showerror("错误", "配置不合法：检查是否有空")
-                return
             except ValueError:
                 showerror("错误", "配置不合法：检查是否都为正整数")
                 return
@@ -235,7 +233,8 @@ class UI:
                 return
 
             entry.destroy()
-            self.executor.property.width[column] = max(self.executor.property.default_width[column], getWidth(self.executor.property.rows[row][column].get()))
+            self.executor.property.width[column] = max(self.executor.property.default_width[column],
+                                                       getWidth(self.executor.property.rows[row][column].get()))
             label.config(width=self.executor.property.width[column])
             label.config(text=self.executor.property.rows[row][column].get())
             label.grid(row=row + 2, column=column, sticky=W + E)
@@ -269,9 +268,6 @@ class UI:
         def confirmAdd(row, column, buffer, entry_list, button_add, button_confirm, button_cancel):
             try:
                 self.executor.isValidProperty(buffer)
-            except NullError:
-                showerror("错误", "配置不合法：检查是否有空")
-                return
             except ValueError:
                 showerror("错误", "配置不合法：检查是否都为正整数")
                 return
@@ -500,10 +496,6 @@ class RangeError(Exception):
     pass
 
 
-class NullError(Exception):
-    pass
-
-
 def precision(num):
     if num < 0:
         raise ValueError
@@ -520,6 +512,24 @@ class Executor:
         self.property = Property()
 
     def execute(self):
+        @unique
+        class Type(Enum):
+            # 全空(一般不会)
+            error = 0b00000
+            # 正常
+            normal = 0b11111
+            # 只填了dst, dst_beg, template
+            new = 0b00011
+
+        def getType(lst):
+            res = 0b0
+            for item in lst:
+                res <<= 1
+                if item != "":
+                    res += 1
+
+            return res
+
         for filename in self.excelManager.filenames:
             self.excelManager.read(filename)
 
@@ -527,64 +537,103 @@ class Executor:
             abandon = []
 
             for _property in self.property.rows:
-                # pattern：(reg, reg_string) 或 (str, []) 或 (dec, round)
+                # pattern：(flt, condition) 或 (reg, reg_string) 或 (str, []) 或 (dec, round)
                 src, src_beg, src_end, dst, dst_beg, pattern, template = [p.get() for p in _property]
-                src = int(src) - 1
-                src_beg = int(src_beg) - 1
-                src_end = int(src_end) - 1
-                dst = int(dst) - 1
-                dst_beg = int(dst_beg) - 1
-                for offset in range(0, src_end - src_beg + 1):
-                    src_row = 0
-                    src_column = 0
+                _type = getType(_property[0: 5])
+
+                if _type == Type.error.value:
+                    return
+
+                elif _type == Type.new.value:
+                    dst = int(dst) - 1
+                    dst_beg = int(dst_beg) - 1
+
                     dst_row = 0
                     dst_column = 0
                     # 列
                     if self.property.mode.get() == 0:
-                        src_row = src_beg + offset
-                        src_column = src
-                        dst_row = dst_beg + offset
+                        dst_row = dst_beg
                         dst_column = dst
                     # 行
                     elif self.property.mode.get() == 1:
-                        src_row = src
-                        src_column = src_beg + offset
                         dst_row = dst
-                        dst_column = dst_beg + offset
+                        dst_column = dst_beg
 
-                    value = str(self.excelManager.src_sheet.cell_value(src_row, src_column))
-                    print(value)
-
-                    if pattern != "":
-                        value, parse_res = self.parser(pattern, value)
-                    else:
-                        parse_res = []
-
-                    filt_res = True
-                    for res in parse_res:
-                        if isinstance(res, bool):
-                            filt_res = filt_res and res
-
-                    # 不满足筛选条件
-                    if not filt_res:
-                        abandon.append(src_row)
-                        continue
-
-                    if template != "":
-                        place_holders = re.findall(r"{\s*\d+\s*}", template)
-                        place_holders.sort(key=lambda idx: int(re.findall(r"\d+", idx)[0]))
-                        _template = template
-                        for i in range(0, min(len(parse_res), len(place_holders))):
-                            _template = template.replace(place_holders[i], str(parse_res[i]))
-                        value = _template
-
-                    print(value)
+                    value = template
 
                     while dst_row >= len(self.excelManager.dst_sheet):
                         self.excelManager.dst_sheet.append(list())
                     while dst_column >= len(self.excelManager.dst_sheet[dst_row]):
                         self.excelManager.dst_sheet[dst_row].append([None, None])
                     self.excelManager.dst_sheet[dst_row][dst_column] = [value, None]
+
+                elif _type == Type.normal.value:
+                    print("normal")
+                    src = int(src) - 1
+                    src_beg = int(src_beg) - 1
+
+                    # 不填 src_end 默认到表格的最后一行/一列
+                    if src_end == "":
+                        # 列
+                        if self.property.mode.get() == 0:
+                            src_end = self.excelManager.nrows
+                        # 行
+                        elif self.property.mode.get() == 1:
+                            src_end = self.excelManager.ncols
+                    else:
+                        src_end = int(src_end) - 1
+
+                    dst = int(dst) - 1
+                    dst_beg = int(dst_beg) - 1
+                    for offset in range(0, src_end - src_beg + 1):
+                        src_row = 0
+                        src_column = 0
+                        dst_row = 0
+                        dst_column = 0
+                        # 列
+                        if self.property.mode.get() == 0:
+                            src_row = src_beg + offset
+                            src_column = src
+                            dst_row = dst_beg + offset
+                            dst_column = dst
+                        # 行
+                        elif self.property.mode.get() == 1:
+                            src_row = src
+                            src_column = src_beg + offset
+                            dst_row = dst
+                            dst_column = dst_beg + offset
+
+                        value = str(self.excelManager.src_sheet.cell_value(src_row, src_column))
+                        print(value)
+
+                        if pattern != "":
+                            value, parse_res = self.parser(pattern, value)
+                        else:
+                            parse_res = []
+
+                        filt_res = True
+                        for res in parse_res:
+                            if isinstance(res, bool):
+                                filt_res = filt_res and res
+
+                        # 不满足筛选条件
+                        if not filt_res:
+                            abandon.append(src_row)
+                            continue
+
+                        if template != "":
+                            place_holders = re.findall(r"{\s*\d+\s*}", template)
+                            place_holders.sort(key=lambda idx: int(re.findall(r"\d+", idx)[0]))
+                            _template = template
+                            for i in range(0, min(len(parse_res), len(place_holders))):
+                                _template = template.replace(place_holders[i], str(parse_res[i]))
+                            value = _template
+
+                        while dst_row >= len(self.excelManager.dst_sheet):
+                            self.excelManager.dst_sheet.append(list())
+                        while dst_column >= len(self.excelManager.dst_sheet[dst_row]):
+                            self.excelManager.dst_sheet[dst_row].append([None, None])
+                        self.excelManager.dst_sheet[dst_row][dst_column] = [value, None]
 
             res_buffer = []
             if len(abandon) != 0:
@@ -655,14 +704,13 @@ class Executor:
         self.execute()
 
     def isValidProperty(self, this_row):
-        # TODO 不允许src, dst都相同
         i = 0
         for data in this_row:
             if i == 5 or i == 6:
                 i += 1
                 continue
             if data.get() == "":
-                raise NullError()
+                continue
             if not data.get().isdigit():
                 raise ValueError
             i += 1
@@ -698,7 +746,7 @@ class Property:
         except FileNotFoundError:
             fp = open(property_file, 'w')
             fp.close()
-            self.csvManager.headers = ["源文件", "起始", "终止", "目标文件", "起始", "pattern", "template", "0"]
+            self.csvManager.headers = ["源文件", "起始", "终止", "目标文件", "起始", "命令", "模板", "0"]
 
         self.mode = IntVar()
         self.headers = []
@@ -779,6 +827,8 @@ class ExcelManager(FileManager):
     def __init__(self):
         super().__init__()
         self.src_sheet = []
+        self.nrows = 0
+        self.ncols = 0
         """[[[label, style], ...], ...]"""
         self.dst_sheet = []
         self.xf_list = []
@@ -793,6 +843,9 @@ class ExcelManager(FileManager):
     def read(self, filename):
         work_book = xlrd.open_workbook(filename, formatting_info=True)
         self.src_sheet = work_book.sheets()[0]
+        self.nrows = self.src_sheet.nrows
+        self.ncols = self.src_sheet.ncols
+        print(self.nrows, self.ncols)
         self.xf_list = work_book.xf_list
         self.font_list = work_book.font_list
 
