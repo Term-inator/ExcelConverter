@@ -14,7 +14,6 @@ from tkinter.messagebox import showerror
 
 property_file = "property.csv"
 
-# TODO 支持逆向访问
 # TODO 列号沿用Excel的格式
 # TODO 分号分隔并使用模板有问题
 # TODO 报错处理
@@ -250,14 +249,7 @@ class UI:
             canvas.config(scrollregion=canvas.bbox("all"))
 
         def focusOut(event, label: Label, entry: Entry, row: int, column: int):
-            try:
-                self.executor.isValidProperty(self.executor.property.rows[row])
-            except ValueError:
-                showerror("错误", "配置不合法：检查是否都为正整数")
-                return
-            except RangeError:
-                showerror("错误", "配置不合法：检查 起始 <= 结束")
-                return
+            self.executor.isValidProperty(self.executor.property.rows[row])
 
             entry.destroy()
             # 更新宽度
@@ -300,14 +292,7 @@ class UI:
         def confirmAdd(row: int, column: int, buffer: list, entry_list: list, button_confirm: Button,
                        button_cancel: Button):
             # 将buffer内容存入 property 中
-            try:
-                self.executor.isValidProperty(buffer)
-            except ValueError:
-                showerror("错误", "配置不合法：检查是否都为正整数")
-                return
-            except RangeError:
-                showerror("错误", "配置不合法：检查 起始 <= 结束")
-                return
+            self.executor.isValidProperty(buffer)
 
             for entry in entry_list:
                 entry.destroy()
@@ -559,10 +544,6 @@ class UI:
             label.grid(row=key, column=0, ipadx=28, ipady=10)
 
 
-class RangeError(Exception):
-    pass
-
-
 def precision(num):
     """decimal quantize四舍五入的参数"""
 
@@ -586,7 +567,7 @@ class Executor:
             # 全空(一般不会)
             error = [0b00000]
             # 正常
-            normal = [0b11111, 0b11011]
+            normal = [0b11111]
             # 只填了dst, dst_beg, template
             new = [0b00011]
 
@@ -642,16 +623,24 @@ class Executor:
                     src = int(src) - 1
                     src_beg = int(src_beg) - 1
 
-                    # 不填 src_end 默认到表格的最后一行/一列
-                    if src_end == "":
+                    src_end = int(src_end)
+                    if src_end < 0:
                         # 列
                         if self.property.mode.get() == 0:
-                            src_end = self.excelManager.nrows - 1
+                            src_end += self.excelManager.nrows
                         # 行
                         elif self.property.mode.get() == 1:
-                            src_end = self.excelManager.ncols - 1
+                            src_end += self.excelManager.ncols
+                        src_end -= 1
+                    elif src_end >= 1:
+                        src_end -= 1
                     else:
-                        src_end = int(src_end) - 1
+                        print("error")
+
+                    if src_end <= 0:
+                        print("error")
+
+                    print("end=" + str(src_end))
 
                     dst = int(dst) - 1
                     dst_beg = int(dst_beg) - 1
@@ -783,16 +772,7 @@ class Executor:
         self.execute()
 
     def isValidProperty(self, this_row):
-        i = 0
-        for data in this_row:
-            if i == 5 or i == 6:
-                i += 1
-                continue
-            if data.get() == "":
-                continue
-            i += 1
-        if this_row[2].get() != "" and this_row[1].get() > this_row[2].get():
-            raise RangeError()
+        pass
 
     def addProperty(self, buffer):
         self.property.rows.append(buffer)
