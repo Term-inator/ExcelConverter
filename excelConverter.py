@@ -14,9 +14,26 @@ from tkinter.messagebox import showerror
 
 property_file = "property.csv"
 
-# TODO 列号沿用Excel的格式
-# TODO 分号分隔并使用模板有问题
+# TODO 分号分隔并使用模板有问题 bug
 # TODO 报错处理
+
+
+def excel26To10(s: str) -> int:
+    """将Excel表格的列号(26进制)转换成10进制正整数"""
+
+    num = s[::-1]
+
+    res = 0
+    exp = 0
+    for c in num:
+        if c.isupper():
+            value = ord(c) - ord('A') + 1
+        else:
+            value = ord(c) - ord('a') + 1
+        res += value * (26**exp)
+        exp += 1
+
+    return res
 
 
 def isChinese(c: str) -> bool:
@@ -582,6 +599,17 @@ class Executor:
 
             return res
 
+        def convertToInt(s: str):
+            """将前5项参数转换为int"""
+
+            if str == "":
+                return str
+
+            if s.isdigit() or s[0] == '-':
+                return int(s)
+            else:
+                return excel26To10(s)
+
         for filename in self.excelManager.filenames:
             self.excelManager.read(filename)
 
@@ -591,13 +619,22 @@ class Executor:
             for _property in self.property.rows:
                 # pattern：(flt, condition) 或 (reg, reg_string) 或 (str, []) 或 (dec, round)
                 src, src_beg, src_end, dst, dst_beg, pattern, template = [p.get() for p in _property]
+
                 _type = getType(_property[0: 5])
 
                 print(_type)
 
+                src = convertToInt(src)
+                src_beg = convertToInt(src_beg)
+                src_end = convertToInt(src_end)
+                dst = convertToInt(dst)
+                dst_beg = convertToInt(dst_beg)
+
+                print(src, src_beg, src_end, dst, dst_beg)
+
                 if _type in Type.new.value:
-                    dst = int(dst) - 1
-                    dst_beg = int(dst_beg) - 1
+                    dst -= 1
+                    dst_beg -= 1
 
                     dst_row = 0
                     dst_column = 0
@@ -620,30 +657,28 @@ class Executor:
 
                 elif _type in Type.normal.value:
                     print("normal")
-                    src = int(src) - 1
-                    src_beg = int(src_beg) - 1
+                    src -= 1
+                    src_beg -= 1
 
-                    src_end = int(src_end)
                     if src_end < 0:
+                        print(src_end, self.excelManager.nrows)
                         # 列
                         if self.property.mode.get() == 0:
                             src_end += self.excelManager.nrows
                         # 行
                         elif self.property.mode.get() == 1:
                             src_end += self.excelManager.ncols
-                        src_end -= 1
+
                     elif src_end >= 1:
                         src_end -= 1
                     else:
-                        print("error")
+                        print("src_end error")
 
-                    if src_end <= 0:
-                        print("error")
+                    if src_end < 0:
+                        print("src_end error")
 
-                    print("end=" + str(src_end))
-
-                    dst = int(dst) - 1
-                    dst_beg = int(dst_beg) - 1
+                    dst -= 1
+                    dst_beg -= 1
                     for offset in range(0, src_end - src_beg + 1):
                         src_row = 0
                         src_column = 0
