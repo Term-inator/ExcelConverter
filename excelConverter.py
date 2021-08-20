@@ -14,22 +14,26 @@ from tkinter.messagebox import showerror
 
 property_file = "property.csv"
 
-
-# TODO 列号沿用Excel的格式
 # TODO 支持逆向访问
+# TODO 列号沿用Excel的格式
+# TODO 分号分隔并使用模板有问题
 # TODO 报错处理
 
 
-def isChinese(c):
+def isChinese(c: str) -> bool:
+    """判断字符c是否是中文"""
+
     if '\u4e00' <= c <= '\u9fff':
         return True
     return False
 
 
-def getWidth(s):
-    # 对于label和entry 一个字母或数字宽度为1 一个汉字宽度为2
+def getWidth(s: str) -> int:
+    """获取字符串s在屏幕上的长度"""
+
     width = 0
     for c in s:
+        # 对于label和entry 一个字母或数字宽度为1 一个汉字宽度为2
         if isChinese(c):
             width += 2
         else:
@@ -42,12 +46,16 @@ def handlerAdaptor(fun, **kwds):
     return lambda event, fun=fun, kwds=kwds: fun(event, **kwds)
 
 
-def clearFrame(frame):
+def clearFrame(frame: Frame) -> None:
+    """清空frame中的内容"""
+
     for widget in frame.winfo_children():
         widget.destroy()
 
 
-def getComponents(frame):
+def getComponents(frame: Frame) -> list:
+    """获取frame中的所有子组件"""
+
     res = [frame]
     for widget in frame.winfo_children():
         res += getComponents(widget)
@@ -60,9 +68,10 @@ class UI:
         self.root_width = width
         self.root_height = height
         self.nav_width = int(0.14 * self.root_width)
-        padding = 40
+        padding = 40  # 左右内边距宽
         self.main_width = self.root_width - self.nav_width - 2 * padding
 
+        # 左侧导航栏
         self.nav_bar = Frame(self.root,
                              width=self.nav_width,
                              height=self.root_height)
@@ -70,17 +79,20 @@ class UI:
         self.nav_bar.grid_propagate(0)
         self.nav_bar.pack_propagate(0)
 
+        # 导航栏右侧边框
         border_right = Label(self.root,
                              borderwidth=0.1,
                              relief=GROOVE,
                              bg="black")
         border_right.pack(side="left", fill="y")
 
+        # main_frame 左边距
         padding_left = Frame(self.root,
                              width=padding,
                              height=self.root_height)
         padding_left.pack(side="left", fill="y")
 
+        # 主框架
         self.main_frame = Frame(self.root,
                                 width=self.main_width,
                                 height=self.root_height)
@@ -88,30 +100,34 @@ class UI:
         self.main_frame.grid_propagate(0)
         self.main_frame.pack_propagate(0)
 
+        # main_frame 右边距
         padding_right = Frame(self.root,
                               width=padding,
                               height=self.root_height)
         padding_right.pack(side="left", fill="y")
 
-        self.pages = {'0': "主页", '1': "设置"}
-        self.page = '0'
+        self.pages = {'0': "主页", '1': "设置"}  # 页面注册
+        self.page = '0'  # 当前页面
 
-        self.executor = Executor()
+        self.executor = Executor()  # 执行器
 
     def GUIManager(self):
         self.nav()
         self.mainPage()
 
     def mainPage(self):
+        # 可滚动frame的实现：frame嵌套canvas, canvas中再嵌套一个frame, 然后让canvas能滚动即可
         outer_frame = 0
         canvas = 0
         inner_frame = 0
 
         def scroll(event):
-            d = int(-event.delta / 120)
+            d = int(-event.delta / 120)  # 设置滚轮滚动速率120
             canvas.yview_scroll(d, "units")
 
         def bind_scroll():
+            """给outer_frame中的所有组件绑定滚轮事件"""
+
             for widget in getComponents(outer_frame):
                 widget.bind("<MouseWheel>", scroll)
 
@@ -139,6 +155,8 @@ class UI:
             canvas.config(scrollregion=canvas.bbox("all"))
 
         def selectDir():
+            """选择文件夹"""
+
             self.executor.selectDirAndExecute()
 
             clearFrame(outer_frame)
@@ -152,6 +170,8 @@ class UI:
             scrollable_frame_after()
 
         def selectFile():
+            """选择文件"""
+
             self.executor.selectFileAndExecute()
 
             clearFrame(outer_frame)
@@ -180,11 +200,17 @@ class UI:
         scrollable_frame_after()
 
     def settings(self):
+        """设置页面"""
+
         outer_frame = 0
         canvas = 0
         inner_frame = 0
-        property_label_list = []
-        button_delete_list = []
+        button_add = 0  # 新增按钮
+        property_label_list = []  # 配置表格的label列表
+        button_delete_list = []  # 每行配置的删除按钮
+
+        # 表格上面还有两行
+        offset = 2
 
         def scroll(event):
             d = int(-event.delta / 120)
@@ -223,7 +249,7 @@ class UI:
             outer_frame.update()
             canvas.config(scrollregion=canvas.bbox("all"))
 
-        def focusOut(event, label, entry, row, column):
+        def focusOut(event, label: Label, entry: Entry, row: int, column: int):
             try:
                 self.executor.isValidProperty(self.executor.property.rows[row])
             except ValueError:
@@ -234,11 +260,14 @@ class UI:
                 return
 
             entry.destroy()
-            self.executor.property.width[column] = max(self.executor.property.default_width[column],
-                                                       getWidth(self.executor.property.rows[row][column].get()))
+            # 更新宽度
+            self.executor.property.width[column] = max(self.executor.property.width[column],
+                                                       max(self.executor.property.default_width[column],
+                                                           getWidth(self.executor.property.rows[row][column].get())))
             label.config(width=self.executor.property.width[column])
             label.config(text=self.executor.property.rows[row][column].get())
-            label.grid(row=row + 2, column=column, sticky=W + E)
+            nonlocal offset
+            label.grid(row=row + offset, column=column, sticky=W + E)
 
             for widget in getComponents(self.main_frame):
                 widget.unbind("<Button-1>")
@@ -247,26 +276,30 @@ class UI:
 
             scrollable_frame_after()
 
-        def editProperty(event, label):
+        def editProperty(event, label: Label):
             index = property_label_list.index(label)
-            row = int(index / self.executor.property.attr_num)
-            column = index % self.executor.property.attr_num
+            row = int(index / self.executor.property.attr_num)  # label对应的property行
+            column = index % self.executor.property.attr_num  # label对应的property列
 
             label.grid_forget()
-            print(self.executor.property.width)
+
             entry = Entry(inner_frame,
                           textvariable=self.executor.property.rows[row][column],
                           font=("宋体", "12"),
                           width=self.executor.property.width[column])
             entry.bind("<MouseWheel>", scroll)
             entry.focus_set()
-            entry.grid(row=row + 2, column=column, sticky=W + E)
+            nonlocal offset
+            entry.grid(row=row + offset, column=column, sticky=W + E)
             for widget in getComponents(self.main_frame):
                 if widget == entry:
                     continue
+                # 点击其他位置取消编辑
                 widget.bind("<Button-1>", handlerAdaptor(focusOut, label=label, entry=entry, row=row, column=column))
 
-        def confirmAdd(row, column, buffer, entry_list, button_add, button_confirm, button_cancel):
+        def confirmAdd(row: int, column: int, buffer: list, entry_list: list, button_confirm: Button,
+                       button_cancel: Button):
+            # 将buffer内容存入 property 中
             try:
                 self.executor.isValidProperty(buffer)
             except ValueError:
@@ -284,6 +317,8 @@ class UI:
             button_confirm.grid_forget()
             button_cancel.grid_forget()
 
+            # 将结果更新到界面
+            nonlocal offset
             i = 0
             for data in buffer:
                 label = Label(inner_frame,
@@ -294,46 +329,58 @@ class UI:
                 label.bind("<Double-Button-1>", handlerAdaptor(editProperty, label=label))
                 label.bind("<MouseWheel>", scroll)
                 property_label_list.append(label)
-                label.grid(row=row, column=column + i, sticky=W + E)
+                label.grid(row=row + offset, column=column + i, sticky=W + E)
                 i += 1
 
+            print(row + offset)
+
+            # 绘制删除按钮
             button_delete = Button(inner_frame,
                                    text="删除",
                                    font=("宋体", "12"),
                                    width=4,
-                                   command=lambda index=row - 2: deleteRow(index, button_delete))
-            button_delete.grid(row=row, column=column + i, sticky=W + E)
+                                   command=lambda _row=row: deleteRow(row, button_delete))
+            button_delete.grid(row=row + offset, column=column + i, sticky=W + E)
             button_delete_list.append(button_delete)
 
-            button_add.config(command=lambda: addRow(row + 1, 0, button_add))
-            button_add.grid(row=row + 1, column=column, pady=16, sticky=W + E)
+            # 放回新增按钮
+            nonlocal button_add
+            button_add.config(command=lambda: addRow(row + 1, 0))
+            button_add.grid(row=row + offset + 1, column=column, pady=16, sticky=W + E)
 
             scrollable_frame_after()
 
-        def cancelAdd(row, column, entry_list, button_add, button_confirm, button_cancel):
+        def cancelAdd(row: int, column: int, entry_list: list, button_confirm: Button, button_cancel: Button):
             for entry in entry_list:
                 entry.destroy()
 
             button_confirm.grid_forget()
             button_cancel.grid_forget()
 
-            button_add.grid(row=row + 1, column=column, pady=16, sticky=W + E)
+            # 放回新增按钮
+            nonlocal button_add, offset
+            button_add.grid(row=row + offset, column=column, pady=16, sticky=W + E)
 
             scrollable_frame_after()
 
-        def addRow(row, column, button_add):
+        def addRow(row: int, column: int):
+            # row是在property.rows中的行索引
+            nonlocal button_add
             button_add.grid_forget()
             r = row
             c = column
+            # 缓存新增行的数据
             buffer = [StringVar() for idx in range(0, self.executor.property.attr_num)]
             entry_list = []
+
+            nonlocal offset
             for i in range(0, self.executor.property.attr_num):
                 entry = Entry(inner_frame,
                               textvariable=buffer[i],
                               font=("宋体", "12"),
                               width=self.executor.property.width[i])
                 entry.bind("<MouseWheel>", scroll)
-                entry.grid(row=r, column=c, sticky=W + E)
+                entry.grid(row=r + offset, column=c, sticky=W + E)
                 entry_list.append(entry)
                 c += 1
 
@@ -341,25 +388,26 @@ class UI:
                                     text="确认",
                                     font=("宋体", "12"),
                                     width=4,
-                                    command=lambda: confirmAdd(row, column, buffer, entry_list, button_add,
+                                    command=lambda: confirmAdd(r, column, buffer, entry_list,
                                                                button_confirm, button_cancel))
-            button_confirm.grid(row=r, column=c, padx=10, sticky=W + E)
+            button_confirm.grid(row=r + offset, column=c, padx=10, sticky=W + E)
 
             c += 1
             button_cancel = Button(inner_frame,
                                    text="取消",
                                    font=("宋体", "12"),
                                    width=4,
-                                   command=lambda: cancelAdd(row, column, entry_list, button_add, button_confirm,
+                                   command=lambda: cancelAdd(r, column, entry_list, button_confirm,
                                                              button_cancel))
-            button_cancel.grid(row=r, column=c, sticky=W + E)
+            button_cancel.grid(row=r + offset, column=c, sticky=W + E)
 
             scrollable_frame_after()
 
-        def deleteRow(row, button_delete):
+        def deleteRow(row: int, button_delete: Button):
             button_delete_list.remove(button_delete)
             button_delete.destroy()
 
+            # 计算开头的索引, 删除attr_num次, 即为删除了一行
             index = row * self.executor.property.attr_num
             for i in range(0, self.executor.property.attr_num):
                 property_label_list[index].destroy()
@@ -367,30 +415,43 @@ class UI:
 
             self.executor.deleteProperty(row)
 
+            # 更新新增按钮新增的行号
+            nonlocal button_add
+            button_add.config(command=lambda: addRow(len(self.executor.property.rows), 0))
+
             displayPropertyLabels()
             displayButtonDelete()
 
             scrollable_frame_after()
 
         def displayButtonDelete():
-            i = 0
+            """放置删除按钮"""
+
+            nonlocal offset
+            row = 0
             for button_delete in button_delete_list:
                 button_delete.config(
-                    command=lambda _row=i, _button_delete=button_delete: deleteRow(_row, _button_delete))
-                button_delete.grid(row=i + 2, column=self.executor.property.attr_num, sticky=W + E)
-                i += 1
+                    command=lambda _row=row, _button_delete=button_delete: deleteRow(_row, _button_delete))
+                button_delete.grid(row=row + offset, column=self.executor.property.attr_num, sticky=W + E)
+                row += 1
 
         def displayPropertyLabels():
+            """放置配置label"""
+
+            nonlocal offset
             i = 0
             j = 0
             for label in property_label_list:
-                label.grid(row=i + 2, column=j, sticky=W + E)
+                label.grid(row=i + offset, column=j, sticky=W + E)
                 j += 1
                 if j == self.executor.property.attr_num:
                     i += 1
                     j = 0
 
         def drawProperty():
+            """生成配置label"""
+
+            # 绘制表头
             i = 1
             j = 0
             for attr in self.executor.property.headers:
@@ -427,11 +488,12 @@ class UI:
                 i += 1
                 j = 0
 
+            nonlocal button_add
             button_add = Button(inner_frame,
                                 text="新增",
                                 font=("宋体", "12"),
                                 width=8,
-                                command=lambda: addRow(i, 0, button_add))
+                                command=lambda: addRow(row_index, 0))
             button_add.grid(row=i, column=j, pady=16, sticky=W + E)
 
             displayPropertyLabels()
@@ -464,7 +526,9 @@ class UI:
         bind_scroll()
         scrollable_frame_after()
 
-    def switchPage(self, event, page_num):
+    def switchPage(self, event, page_num: int):
+        """切换页面"""
+
         if self.page == page_num:
             return
 
@@ -481,6 +545,8 @@ class UI:
         self.nav()
 
     def nav(self):
+        """绘制导航栏"""
+
         for (key, value) in self.pages.items():
             font = ("宋体", 16)
             if key == self.page:
@@ -498,6 +564,8 @@ class RangeError(Exception):
 
 
 def precision(num):
+    """decimal quantize四舍五入的参数"""
+
     if num < 0:
         raise ValueError
     res = "0."
@@ -516,14 +584,15 @@ class Executor:
         @unique
         class Type(Enum):
             # 全空(一般不会)
-            error = 0b00000
+            error = [0b00000]
             # 正常
-            normal = 0b11111
+            normal = [0b11111, 0b11011]
             # 只填了dst, dst_beg, template
-            new = 0b00011
+            new = [0b00011]
 
         def getType(lst):
-            print(lst)
+            """比特序列匹配type"""
+
             res = 0b0
             for item in lst:
                 res <<= 1
@@ -543,10 +612,9 @@ class Executor:
                 src, src_beg, src_end, dst, dst_beg, pattern, template = [p.get() for p in _property]
                 _type = getType(_property[0: 5])
 
-                if _type == Type.error.value:
-                    return
+                print(_type)
 
-                elif _type == Type.new.value:
+                if _type in Type.new.value:
                     dst = int(dst) - 1
                     dst_beg = int(dst_beg) - 1
 
@@ -569,7 +637,7 @@ class Executor:
                         self.excelManager.dst_sheet[dst_row].append([None, None])
                     self.excelManager.dst_sheet[dst_row][dst_column] = [value, None]
 
-                elif _type == Type.normal.value:
+                elif _type in Type.normal.value:
                     print("normal")
                     src = int(src) - 1
                     src_beg = int(src_beg) - 1
@@ -578,10 +646,10 @@ class Executor:
                     if src_end == "":
                         # 列
                         if self.property.mode.get() == 0:
-                            src_end = self.excelManager.nrows
+                            src_end = self.excelManager.nrows - 1
                         # 行
                         elif self.property.mode.get() == 1:
-                            src_end = self.excelManager.ncols
+                            src_end = self.excelManager.ncols - 1
                     else:
                         src_end = int(src_end) - 1
 
@@ -637,6 +705,10 @@ class Executor:
                             self.excelManager.dst_sheet[dst_row].append([None, None])
                         self.excelManager.dst_sheet[dst_row][dst_column] = [value, None]
 
+                else:
+                    print("error")
+
+            # 去除不需要的数据
             res_buffer = []
             if len(abandon) != 0:
                 for i in range(0, len(self.excelManager.dst_sheet)):
@@ -646,7 +718,12 @@ class Executor:
 
             self.excelManager.write(filename)
 
+            # 清空缓存
+            self.excelManager.dst_sheet.clear()
+
     def parser(self, string, value):
+        """解析器"""
+
         cmd_lst = string.split(";")
         cmd_lst = [s.strip() for s in cmd_lst]
         res = []
@@ -714,7 +791,7 @@ class Executor:
             if data.get() == "":
                 continue
             i += 1
-        if this_row[1].get() > this_row[2].get():
+        if this_row[2].get() != "" and this_row[1].get() > this_row[2].get():
             raise RangeError()
 
     def addProperty(self, buffer):
@@ -869,7 +946,7 @@ class ExcelManager(FileManager):
                     style = _style
                 worksheet.write(row, column, label, style)
 
-        workbook.save(filename + "的结果.xls")
+        workbook.save(os.path.splitext(filename)[0] + "的结果.xls")
 
 
 class CSVManager(FileManager):
@@ -903,7 +980,7 @@ def main():
     root = Tk()
     root.title("Excel转换工具0.0.1")
     root.geometry("980x500")
-    # root.resizable(width=False, height=False)
+    root.resizable(width=False, height=False)
     ui = UI(root, 980, 500)
     ui.GUIManager()
     root.mainloop()
